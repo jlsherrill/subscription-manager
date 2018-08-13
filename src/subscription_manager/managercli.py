@@ -169,6 +169,10 @@ CONSUMED_LIST = [
     _("System Type:")
 ]
 
+SP_CONFLICT_MESSAGE = "Due to a conflicting change made at the server the " \
+                      "{attr} has not been set.\n"
+SP_ADVICE = "If you'd like to overwrite the server side change please run: {command}"
+
 
 def handle_exception(msg, ex):
 
@@ -519,6 +523,121 @@ class CliCommand(AbstractCLICommand):
                 raise ge
 
 
+class SyspurposeCommand(CliCommand):
+    """
+    Abstract command for manipulating an attribute of system purpose.
+    """
+
+    def __init__(self, name, shortdesc=None, primary=False, attr=None, commands=['set', 'unset']):
+        super(SyspurposeCommand, self).__init__(name, shortdesc=shortdesc, primary=primary)
+
+        self.attr = attr
+
+        if 'set' in commands:
+            self.parser.add_option("--set", dest="set",
+                help=(_("Set {attr} of system purpose".format(attr=attr))))
+        if 'unset' in commands:
+            self.parser.add_option("--unset", dest="unset", action="store_true",
+                help=(_("Unset {attr} of system purpose".format(attr=attr))))
+        if 'add' in commands:
+            self.parser.add_option("--add", dest="to_add", action="append", default=[],
+                                   help=_("Add an item to the list ({attr}).".format(attr=attr)))
+        if 'remove' in commands:
+            self.parser.add_option("--remove", dest="to_remove", action="append", default=[],
+                                   help=_("Remove an item from the list ({attr}).".format(attr=attr)))
+
+    def set(self):
+        self._set(self.options.set)
+        expectation = lambda res: res.get(self.attr) == self.options.set
+        success_msg = "{attr} set to \"{val}\".".format(attr=self.attr, val=self.option.set)
+        self._check_result(expectation=expectation,
+                           success_msg=success_msg,
+                           command="subscription-manager {name} --set".format(name=self.name),
+                           attr=self.attr)
+
+    def _set(self):
+        raise NotImplemented("To be implemented in subclasses")
+
+    def unset(self):
+        self._unset()
+        expectation = lambda res: res.get(self.attr) == ""
+        success_msg = "{attr} unset.".format(attr=self.attr)
+        self._check_result(expectation=expectation,
+                           success_msg=success_msg,
+                           command="subscription-manager {name} --unset".format(name=self.name),
+                           attr=self.attr)
+
+    def _unset(self):
+        self._set("")
+
+    def add(self):
+        self._add(self.options.to_add)
+        expectation = lambda res: all(x in res.get('addons',[]) for x in self.options.to_add)
+        success_msg = "{attr} updated.".format(attr=self.name)
+        to_add = "--add "+ "--add ".join(self.options.to_add)
+        command = "subscription-manager {name} ".format(name=self.name) + to_add
+        self._check_result(expectation=expectation,
+                           success_msg=success_msg,
+                           command=command,
+                           attr=self.attr)
+
+    def _add(self):
+        raise NotImplemented("To be implemented in subclasses")
+
+    def remove(self):
+        self._remove(self.options.to_remove)
+        expectation = lambda res: all(x not in res.get('addons',[]) for x in self.options.to_remove)
+        success_msg = "{attr} updated.".format(attr=self.name.capitalize())
+        to_remove = "--remove "+ "--remove ".join(self.options.to_remove)
+        command = "subscription-manager {name} ".format(name=self.name) + to_remove
+        self._check_result(expectation=expectation,
+                           success_msg=success_msg,
+                           command=command,
+                           attr=self.attr)
+
+    def _remove(self):
+        raise NotImplemented("To be implemented in subclasses")
+
+    def show(self):
+        result = self.sync().get(self.attr)
+        if result is not None:
+            print(_("Current {name}: {val}".format(name=self.name.capitalize(), val=self.val)))
+        else:
+            print(_("{name} not set.".format(name=self.name.capitalize())))
+
+    def sync(self):
+        return syspurposelib.SyspurposeSyncActionCommand().perform(include_result=True)[1]
+
+    def _do_command(self):
+        self._validate_options()
+
+        if self.options.unset:
+            self.unset()
+        elif self.options.set is not None:
+            self.set()
+        elif self.options.to_add:
+            self.add()
+        else:
+            self.show()
+
+    def check_syspurpose_support(self, attr):
+        if not self.cp.has_capability('syspurpose'):
+            system_exit(os.EX_UNAVAILABLE,
+                        _("Error: The {attr} command is not supported by the server."
+                          .format(attr=attr)))
+
+
+    def _check_result(self, expectation, success_msg, command, attr):
+        syspurposelib.write()
+        result = syspurposelib.SyspurposeSyncActionCommand().perform(include_result=True)[1]
+
+        if expectation(result):
+            print(_(success_msg))
+        else:
+            advice = SP_ADVICE.format(command=command)
+            system_exit(msgs=_(SP_CONFLICT_MESSAGE.format(attr=attr, advice=advice)))
+
+
 class UserPassCommand(CliCommand):
 
     """
@@ -843,7 +962,7 @@ class AutohealCommand(CliCommand):
             self._toggle(self.options.enable or False)
 
 
-class ServiceLevelCommand(OrgCommand):
+class ServiceLevelCommand(SyspurposeCommand, OrgCommand):
 
     def __init__(self):
 
@@ -910,13 +1029,11 @@ class ServiceLevelCommand(OrgCommand):
 
             if self.options.unset:
                 self.unset_service_level()
-                # Synchronize syspurpose with server
-                syspurposelib.SyspurposeSyncActionCommand().perform()
+                self.unset()
 
             if self.options.service_level is not None:
                 self.set_service_level(self.options.service_level)
-                # Synchronize syspurpose with server
-                syspurposelib.SyspurposeSyncActionCommand().perform()
+                self.set()
 
             if self.options.show:
                 self.show_service_level()
@@ -979,71 +1096,28 @@ class ServiceLevelCommand(OrgCommand):
                 raise e
 
 
-class UsageCommand(CliCommand):
+class UsageCommand(SyspurposeCommand):
 
     def __init__(self):
 
         shortdesc = _("Manage usage setting for this system")
         self._org_help_text = _("use set and unset to define the value for this field")
-        super(UsageCommand, self).__init__("usage", shortdesc, False)
+        super(UsageCommand, self).__init__("usage", shortdesc, False, attr='usage',
+                                           commands=['set', 'unset'])
 
-        self.parser.add_option("--set", dest="usage",
-                help=_("usage setting to apply to this system"))
-        self.parser.add_option("--unset", dest="unset",
-                action='store_true',
-                help=_("unset the usage setting for this system"))
-
-        self.identity = inj.require(inj.IDENTITY)
-
-    def _set_usage(self, usage):
-        consumer = self.cp.getConsumer(self.identity.uuid)
-        if 'usage' not in consumer:
-            system_exit(os.EX_UNAVAILABLE, _("Error: The usage command is not supported by the server."))
+    def _set(self, usage):
         save_usage_to_syspurpose_metadata(usage)
 
-    def _validate_options(self):
+    def _unset(self):
+        self._set("")
 
+    def _validate_options(self):
+        self.check_syspurpose_support('usage')
         if self.options.usage:
             self.options.usage = self.options.usage.strip()
 
         if self.options.usage and self.options.unset:
             system_exit(os.EX_USAGE, _("Error: --set cannot be used with --unset"))
-
-    def _do_command(self):
-        self._validate_options()
-
-        if self.options.unset:
-            self.unset_usage()
-        elif self.options.usage is not None:
-            self.set_usage(self.options.usage)
-        else:
-            self.show_usage()
-
-    def set_usage(self, usage):
-        if usage == "":
-            self.unset_usage()
-        else:
-            self._set_usage(usage)
-            print(_("Usage set to: %s") % usage)
-        # Synchronize syspurpose with server
-        syspurposelib.SyspurposeSyncActionCommand().perform()
-
-    def unset_usage(self):
-        self._set_usage("")
-        print(_("Usage setting has been unset"))
-        # Synchronize syspurpose with server
-        syspurposelib.SyspurposeSyncActionCommand().perform()
-
-    def show_usage(self):
-        consumer = self.cp.getConsumer(self.identity.uuid)
-        if 'usage' not in consumer:
-            system_exit(os.EX_UNAVAILABLE, _("Error: The usage command is not supported by the server."))
-        usage = consumer['usage'] or ""
-        if usage:
-            print(_("Current usage setting: %s") % usage)
-        else:
-            print(_("Usage setting not set"))
-
 
 class RegisterCommand(UserPassCommand):
     def __init__(self):
@@ -1394,18 +1468,12 @@ class UnRegisterCommand(CliCommand):
         print(_("System has been unregistered."))
 
 
-class AddonsCommand(CliCommand):
+class AddonsCommand(SyspurposeCommand):
 
     def __init__(self):
         shortdesc = _("Modify or view the addons attribute of the system purpose")
-        super(AddonsCommand, self).__init__("addons", shortdesc=shortdesc, primary=False)
-
-        self.parser.add_option("--add", dest="to_add", action="append", default=[],
-                               help=_("Add an addon to the list."))
-        self.parser.add_option("--remove", dest="to_remove", action="append", default=[],
-                               help=_("Remove an addon from the list."))
-        self.parser.add_option("--unset", dest="unset", action="store_true",
-                               help=_("Remove all addons from the list"), default=False)
+        super(AddonsCommand, self).__init__("addons", shortdesc=shortdesc, primary=False,
+                                            attr='addons', commands=['unset', 'add', 'remove'])
 
     def _validate_options(self):
         if self.options.unset and (self.options.to_add or self.options.to_remove):
@@ -1413,33 +1481,17 @@ class AddonsCommand(CliCommand):
         if self.options.to_add and self.options.to_remove:
             system_exit(os.EX_USAGE, _("Error: --add cannot be used with --remove"))
 
-    def _do_command(self):
-        self._validate_options()
-
-        if not self.options.unset and not self.options.to_add and not self.options.to_remove:
-            addons = syspurposelib.read_syspurpose().get("addons")
-            if addons:
-                if isinstance(addons, list):
-                    print(_("Current addons: %s" % ", ".join(addons)))
-                else:
-                    print(_("Current addons: %s" % addons))
-            else:
-                print(_("This system does not have any system purpose addons specified."))
-            return
-
-        if self.options.unset:
-            syspurposelib.unset("addons")
-            print(_("Addons unset."))
-        elif self.options.to_add:
-            syspurposelib.add_all("addons", self.options.to_add)
-            print(_("Addons added: %s" % ", ".join(self.options.to_add)))
-        elif self.options.to_remove:
-            syspurposelib.remove_all("addons", self.options.to_remove)
-            print(_("Addons removed: %s" % ", ".join(self.options.to_remove)))
+    def _unset_(self):
+        syspurposelib.unset("addons")
         syspurposelib.write()
 
-        # Synchronize syspurpose with server
-        syspurposelib.SyspurposeSyncActionCommand().perform()
+    def _add(self):
+        syspurposelib.add_all("addons", self.options.to_add)
+        syspurposelib.write()
+
+    def _remove_addons(self):
+        syspurposelib.remove_all("addons", self.options.to_remove)
+        syspurposelib.write()
 
 
 class RedeemCommand(CliCommand):
@@ -2707,55 +2759,19 @@ class OverrideCommand(CliCommand):
             print(columnize(names, echo_columnize_callback, *values, indent=2) + "\n")
 
 
-class RoleCommand(CliCommand):
+class RoleCommand(SyspurposeCommand):
     def __init__(self):
         shortdesc = _("Modify system purpose role")
-        super(RoleCommand, self).__init__("role", shortdesc, primary=False)
-        self.parser.add_option("--set", dest="set_role",
-                               help=(_("Set role of system purpose")))
-        self.parser.add_option("--unset", dest="unset_role", action="store_true",
-                               help=(_("Unset role of system purpose")))
+        super(RoleCommand, self).__init__("role", shortdesc, primary=False, attr='role',
+                                          commands=['set', 'unset'])
 
     def _validate_options(self):
+        self.check_syspurpose_support('role')
         if self.options.set_role and self.options.unset_role:
             system_exit(os.EX_USAGE, _("Error: Options --set and --unset of role subcommand are mutually exclusive."))
 
-    def _set_role(self, role):
-        consumer = self.cp.getConsumer(self.identity.uuid)
-        if 'role' not in consumer:
-            system_exit(os.EX_UNAVAILABLE, _("Error: The role command is not supported by the server."))
-        ret = save_role_to_syspurpose_metadata(role)
-        # Synchronize syspurpose with server
-        syspurposelib.SyspurposeSyncActionCommand().perform()
-        if ret:
-            print(_("System Purpose role has been set to: %s") % role)
-        else:
-            print(_("Error: System Purpose role has NOT been set to: %s") % role)
-
-    def _unset_role(self):
-        consumer = self.cp.getConsumer(self.identity.uuid)
-        if 'role' not in consumer:
-            system_exit(os.EX_UNAVAILABLE, _("Error: The role command is not supported by the server."))
-        ret = save_role_to_syspurpose_metadata('')
-        # Synchronize syspurpose with server
-        syspurposelib.SyspurposeSyncActionCommand().perform()
-        if ret:
-            print(_("System Purpose role has been unset"))
-        else:
-            print(_("Error: System Purpose role has NOT been unset"))
-
-    def _do_command(self):
-        self._validate_options()
-        if self.options.set_role:
-            self._set_role(self.options.set_role)
-        elif self.options.unset_role:
-            self._unset_role()
-        else:
-            sys_purpose_contents = syspurposelib.read_syspurpose()
-            if 'role' in sys_purpose_contents and sys_purpose_contents['role'] is not None:
-                print(_("System purpose role: %s") % sys_purpose_contents['role'])
-            else:
-                print(_("This system does not have any system purpose role"))
+    def _set(self, val):
+        save_role_to_syspurpose_metadata(val)
 
 
 class VersionCommand(CliCommand):

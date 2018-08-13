@@ -320,19 +320,23 @@ class SyspurposeSyncActionCommand(object):
         self.cp_provider = inj.require(inj.CP_PROVIDER)
         self.uep = self.cp_provider.get_consumer_auth_cp()
 
-    def perform(self):
+    def perform(self, include_result=False):
         """
         Perform the action that this Command represents.
         :return:
         """
+        result = {}
         try:
-            self.sync()
+            result = self.sync()
         except ConnectionException as e:
             self.report._exceptions.append('Unable to sync syspurpose with server: %s' % str(e))
             self.report._status = 'Failed to sync system purpose'
         self.report._updates = "\n\t\t ".join(self.report._updates)
         log.debug("Syspurpose updated: %s" % self.report)
-        return self.report
+        if not include_result:
+            return self.report
+        else:
+            return self.report, result
 
     def sync(self):
         """
