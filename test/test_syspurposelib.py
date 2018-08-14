@@ -223,7 +223,7 @@ class SyspurposeSyncActionCommandTests(SubManFixture):
 
             mock_merge.assert_not_called()
             mock_write.assert_not_called()
-            self.assertEqual(result, None)
+            self.assertEqual(result, {})
 
             update.assert_not_called()
 

@@ -1527,7 +1527,7 @@ class TestUsageCommand(TestCliProxyCommand):
 
         self.cc.cp.setConsumer({'usage': 'Jarjar'})
         self.cc.main(["--set", "JARJAR"])
-        self.mock_sp_store.set.assert_has_calls([call("usage", "JARJAR")])
+        self.mock_sp_store.set.assert_has_calls([])
         self.mock_sp_store.write.assert_called_once()
 
         # make sure the sla has been persisted in syspurpose.json:
