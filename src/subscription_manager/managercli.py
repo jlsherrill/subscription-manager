@@ -528,80 +528,100 @@ class SyspurposeCommand(CliCommand):
     Abstract command for manipulating an attribute of system purpose.
     """
 
-    def __init__(self, name, shortdesc=None, primary=False, attr=None, commands=['set', 'unset']):
+    def __init__(self, name, shortdesc=None, primary=False, attr=None, commands=('set', 'unset')):
         super(SyspurposeCommand, self).__init__(name, shortdesc=shortdesc, primary=primary)
 
         self.attr = attr
 
         if 'set' in commands:
-            self.parser.add_option("--set", dest="set",
-                help=(_("Set {attr} of system purpose".format(attr=attr))))
+            self.parser.add_option(
+                "--set",
+                dest="set",
+                help=(_("Set {attr} of system purpose".format(attr=attr)))
+            )
         if 'unset' in commands:
-            self.parser.add_option("--unset", dest="unset", action="store_true",
-                help=(_("Unset {attr} of system purpose".format(attr=attr))))
+            self.parser.add_option(
+                "--unset",
+                dest="unset",
+                action="store_true",
+                help=(_("Unset {attr} of system purpose".format(attr=attr)))
+            )
         if 'add' in commands:
-            self.parser.add_option("--add", dest="to_add", action="append", default=[],
-                                   help=_("Add an item to the list ({attr}).".format(attr=attr)))
+            self.parser.add_option(
+                "--add",
+                dest="to_add",
+                action="append",
+                default=[],
+                help=_("Add an item to the list ({attr}).".format(attr=attr))
+            )
         if 'remove' in commands:
-            self.parser.add_option("--remove", dest="to_remove", action="append", default=[],
-                                   help=_("Remove an item from the list ({attr}).".format(attr=attr)))
+            self.parser.add_option(
+                "--remove",
+                dest="to_remove",
+                action="append", default=[],
+                help=_("Remove an item from the list ({attr}).".format(attr=attr))
+            )
 
     def set(self):
         self._set(self.options.set)
-        expectation = lambda res: res.get(self.attr) == self.options.set
-        success_msg = "{attr} set to \"{val}\".".format(attr=self.attr, val=self.option.set)
-        self._check_result(expectation=expectation,
-                           success_msg=success_msg,
-                           command="subscription-manager {name} --set".format(name=self.name),
-                           attr=self.attr)
+        success_msg = "{attr} set to \"{val}\".".format(attr=self.attr, val=self.options.set)
+        self._check_result(
+            expectation=lambda res: res.get(self.attr) == self.options.set,
+            success_msg=success_msg,
+            command="subscription-manager {name} --set".format(name=self.name),
+            attr=self.attr
+        )
 
-    def _set(self):
-        raise NotImplemented("To be implemented in subclasses")
+    def _set(self, to_set):
+        raise NotImplementedError("To be implemented in subclasses")
 
     def unset(self):
         self._unset()
-        expectation = lambda res: res.get(self.attr) == ""
         success_msg = "{attr} unset.".format(attr=self.attr)
-        self._check_result(expectation=expectation,
-                           success_msg=success_msg,
-                           command="subscription-manager {name} --unset".format(name=self.name),
-                           attr=self.attr)
+        self._check_result(
+            expectation=lambda res: res.get(self.attr) == "",
+            success_msg=success_msg,
+            command="subscription-manager {name} --unset".format(name=self.name),
+            attr=self.attr
+        )
 
     def _unset(self):
         self._set("")
 
     def add(self):
         self._add(self.options.to_add)
-        expectation = lambda res: all(x in res.get('addons',[]) for x in self.options.to_add)
         success_msg = "{attr} updated.".format(attr=self.name)
         to_add = "--add "+ "--add ".join(self.options.to_add)
         command = "subscription-manager {name} ".format(name=self.name) + to_add
-        self._check_result(expectation=expectation,
-                           success_msg=success_msg,
-                           command=command,
-                           attr=self.attr)
+        self._check_result(
+            expectation=lambda res: all(x in res.get('addons', []) for x in self.options.to_add),
+            success_msg=success_msg,
+            command=command,
+            attr=self.attr
+        )
 
-    def _add(self):
+    def _add(self, to_add):
         raise NotImplemented("To be implemented in subclasses")
 
     def remove(self):
         self._remove(self.options.to_remove)
-        expectation = lambda res: all(x not in res.get('addons',[]) for x in self.options.to_remove)
         success_msg = "{attr} updated.".format(attr=self.name.capitalize())
         to_remove = "--remove "+ "--remove ".join(self.options.to_remove)
         command = "subscription-manager {name} ".format(name=self.name) + to_remove
-        self._check_result(expectation=expectation,
-                           success_msg=success_msg,
-                           command=command,
-                           attr=self.attr)
+        self._check_result(
+            expectation=lambda res: all(x not in res.get('addons', []) for x in self.options.to_remove),
+            success_msg=success_msg,
+            command=command,
+            attr=self.attr
+        )
 
-    def _remove(self):
-        raise NotImplemented("To be implemented in subclasses")
+    def _remove(self, to_remove):
+        raise NotImplementedError("To be implemented in subclasses")
 
     def show(self):
         result = self.sync().get(self.attr)
         if result is not None:
-            print(_("Current {name}: {val}".format(name=self.name.capitalize(), val=self.val)))
+            print(_("Current {name}: {val}".format(name=self.name.capitalize(), val=result)))
         else:
             print(_("{name} not set.".format(name=self.name.capitalize())))
 
@@ -626,16 +646,14 @@ class SyspurposeCommand(CliCommand):
                         _("Error: The {attr} command is not supported by the server."
                           .format(attr=attr)))
 
-
     def _check_result(self, expectation, success_msg, command, attr):
-        syspurposelib.write()
         result = syspurposelib.SyspurposeSyncActionCommand().perform(include_result=True)[1]
 
         if expectation(result):
             print(_(success_msg))
         else:
             advice = SP_ADVICE.format(command=command)
-            system_exit(msgs=_(SP_CONFLICT_MESSAGE.format(attr=attr, advice=advice)))
+            system_exit(os.EX_USAGE, msgs=_(SP_CONFLICT_MESSAGE.format(attr=attr, advice=advice)))
 
 
 class UserPassCommand(CliCommand):
@@ -976,11 +994,11 @@ class ServiceLevelCommand(SyspurposeCommand, OrgCommand):
                 help=_("show this system's current service level"))
         self.parser.add_option("--list", dest="list", action='store_true',
                 help=_("list all service levels available"))
-        self.parser.add_option("--set", dest="service_level",
-                               help=_("service level to apply to this system"))
-        self.parser.add_option("--unset", dest="unset",
-                               action='store_true',
-                               help=_("unset the service level for this system"))
+        # self.parser.add_option("--set", dest="service_level",
+        #                        help=_("service level to apply to this system"))
+        # self.parser.add_option("--unset", dest="unset",
+        #                        action='store_true',
+        #                        help=_("unset the service level for this system"))
 
         self.identity = inj.require(inj.IDENTITY)
 
@@ -993,14 +1011,14 @@ class ServiceLevelCommand(SyspurposeCommand, OrgCommand):
 
     def _validate_options(self):
 
-        if self.options.service_level:
-            self.options.service_level = self.options.service_level.strip()
+        if self.options.set:
+            self.options.set = self.options.set.strip()
 
         # Assume --show if run with no args:
         if not self.options.list and \
            not self.options.show and \
-           not self.options.service_level and \
-           not self.options.service_level == "" and \
+           not self.options.set and \
+           not self.options.set == "" and \
            not self.options.unset:
             self.options.show = True
 
@@ -1103,7 +1121,7 @@ class UsageCommand(SyspurposeCommand):
         shortdesc = _("Manage usage setting for this system")
         self._org_help_text = _("use set and unset to define the value for this field")
         super(UsageCommand, self).__init__("usage", shortdesc, False, attr='usage',
-                                           commands=['set', 'unset'])
+                                           commands=('set', 'unset'))
 
     def _set(self, usage):
         save_usage_to_syspurpose_metadata(usage)
@@ -1118,6 +1136,7 @@ class UsageCommand(SyspurposeCommand):
 
         if self.options.usage and self.options.unset:
             system_exit(os.EX_USAGE, _("Error: --set cannot be used with --unset"))
+
 
 class RegisterCommand(UserPassCommand):
     def __init__(self):
@@ -1481,7 +1500,7 @@ class AddonsCommand(SyspurposeCommand):
         if self.options.to_add and self.options.to_remove:
             system_exit(os.EX_USAGE, _("Error: --add cannot be used with --remove"))
 
-    def _unset_(self):
+    def _unset(self):
         syspurposelib.unset("addons")
         syspurposelib.write()
 
@@ -2767,7 +2786,7 @@ class RoleCommand(SyspurposeCommand):
 
     def _validate_options(self):
         self.check_syspurpose_support('role')
-        if self.options.set_role and self.options.unset_role:
+        if self.options.set and self.options.unset:
             system_exit(os.EX_USAGE, _("Error: Options --set and --unset of role subcommand are mutually exclusive."))
 
     def _set(self, val):

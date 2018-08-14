@@ -1509,11 +1509,11 @@ class TestUsageCommand(TestCliProxyCommand):
     def test_usage_not_supported(self):
         self.cc.cp.setConsumer({})
         with self.assertRaisesRegexp(SystemExit, r'' + str(os.EX_UNAVAILABLE)):
-            self.cc.set_usage('JARJAR')
+            self.cc.main(["--set", "JARJAR"])
 
     def test_usage_supported(self):
         self.cc.cp.setConsumer({'usage': 'Jarjar'})
-        self.cc.set_usage('JRJAR')
+        self.cc.main(["--set", "JARJAR"])
 
     def test_usage_creates_syspurpose_dir_and_file(self):
         # create a mock /etc/rhsm/ directory, and set the value of a mock USER_SYSPURPOSE under that
@@ -1526,13 +1526,13 @@ class TestUsageCommand(TestCliProxyCommand):
         self.mock_sp_store.get.assert_not_called()
 
         self.cc.cp.setConsumer({'usage': 'Jarjar'})
-        self.cc.set_usage('JRJAR')
-        self.mock_sp_store.set.assert_has_calls([call("usage", "JRJAR")])
+        self.cc.main(["--set", "JARJAR"])
+        self.mock_sp_store.set.assert_has_calls([call("usage", "JARJAR")])
         self.mock_sp_store.write.assert_called_once()
 
         # make sure the sla has been persisted in syspurpose.json:
         contents = syspurposelib.read_syspurpose()
-        self.assertEqual(contents.get("usage"), "JRJAR")
+        self.assertEqual(contents.get("usage"), "JARJAR")
 
 
 class TestReleaseCommand(TestCliProxyCommand):
@@ -1583,11 +1583,15 @@ class TestRoleCommand(TestCliCommand):
         self.cc = self.command_class()
         self.cc.cp = StubUEP()
         self.cc.cp.registered_consumer_info['role'] = None
+        self.cc.cp._capabilities = ["syspurpose"]
 
     def test_wrong_options_syspurpose_role(self):
         """It is possible to use --set or --unset options. It's not possible to use both of them together."""
+        self.cc.options = Mock()
+        self.cc.options.set = "Foo"
+        self.cc.options.unset = True
+        self.cc.options.to_add = False
         try:
-            self.cc.main(["--set", "Foo", "--unset"])
             self.cc._validate_options()
         except SystemExit as e:
             self.assertEqual(e.code, os.EX_USAGE)
@@ -1611,19 +1615,25 @@ class TestRoleCommand(TestCliCommand):
         super(TestRoleCommand, self).test_main_empty_args()
 
     @patch("subscription_manager.syspurposelib.SyspurposeStore")
-    def test_display_valid_syspurpose_role(self, mock_syspurpose):
+    @patch("subscription_manager.syspurposelib.SyspurposeSyncActionCommand")
+    def test_display_valid_syspurpose_role(self, mock_syspurpose_sync, mock_syspurpose):
         mock_syspurpose.read = Mock()
         mock_syspurpose.read.return_value = Mock()
         instance_syspurpose_store = mock_syspurpose.read.return_value
         instance_syspurpose_store.contents = {'role': 'Foo'}
 
         self.cc.options = Mock()
-        self.cc.options.set_role = None
-        self.cc.options.unset_role = False
+        self.cc.options.set = None
+        self.cc.options.unset = False
+        self.cc.options.to_add = False
+
+        mock_syspurpose_sync.return_value = Mock()
+        instance_mock_syspurpose_sync = mock_syspurpose_sync.return_value
+        instance_mock_syspurpose_sync.perform = Mock(return_value=({}, {"role": "Foo"}))
 
         with Capture() as cap:
             self.cc._do_command()
-        self.assertIn("System purpose role: Foo", cap.out)
+        self.assertIn("Current Role: Foo", cap.out)
 
     @patch("subscription_manager.syspurposelib.SyspurposeStore")
     def test_display_none_syspurpose_role(self, mock_syspurpose):
@@ -1633,11 +1643,12 @@ class TestRoleCommand(TestCliCommand):
         instance_syspurpose_store.contents = {'role': None}
 
         self.cc.options = Mock()
-        self.cc.options.set_role = None
-        self.cc.options.unset_role = False
+        self.cc.options.set = None
+        self.cc.options.unset = False
+        self.cc.options.to_add = False
         with Capture() as cap:
             self.cc._do_command()
-        self.assertIn("This system does not have any system purpose role", cap.out)
+        self.assertIn("Role not set", cap.out)
 
     @patch("subscription_manager.syspurposelib.SyspurposeStore")
     def test_display_nonexisting_syspurpose_role(self, mock_syspurpose):
@@ -1647,14 +1658,16 @@ class TestRoleCommand(TestCliCommand):
         instance_syspurpose_store.contents = {}
 
         self.cc.options = Mock()
-        self.cc.options.set_role = None
-        self.cc.options.unset_role = False
+        self.cc.options.set = None
+        self.cc.options.unset = False
+        self.cc.options.to_add = False
         with Capture() as cap:
             self.cc._do_command()
-        self.assertIn("This system does not have any system purpose role", cap.out)
+        self.assertIn("Role not set.", cap.out)
 
     @patch("subscription_manager.syspurposelib.SyspurposeStore")
-    def test_setting_syspurpose_role(self, mock_syspurpose):
+    @patch("subscription_manager.syspurposelib.SyspurposeSyncActionCommand")
+    def test_setting_syspurpose_role(self, mock_syspurpose_sync, mock_syspurpose):
         mock_syspurpose.read = Mock()
         mock_syspurpose.read.return_value = Mock()
         instance_syspurpose_store = mock_syspurpose.read.return_value
@@ -1662,18 +1675,24 @@ class TestRoleCommand(TestCliCommand):
         instance_syspurpose_store.set = MagicMock(return_value=True)
         instance_syspurpose_store.write = MagicMock(return_value=None)
 
+        mock_syspurpose_sync.return_value = Mock()
+        instance_mock_syspurpose_sync = mock_syspurpose_sync.return_value
+        instance_mock_syspurpose_sync.perform = Mock(return_value=({}, {"role": "Foo"}))
+
         self.cc.options = Mock()
-        self.cc.options.set_role = 'Foo'
-        self.cc.options.unset_role = False
+        self.cc.options.set = 'Foo'
+        self.cc.options.unset = False
+        self.cc.options.to_add = False
         with Capture() as cap:
             self.cc._do_command()
 
-        self.assertIn("System Purpose role has been set to: Foo", cap.out)
+        self.assertIn('role set to "Foo"', cap.out)
         instance_syspurpose_store.set.assert_called_once_with('role', 'Foo')
         instance_syspurpose_store.write.assert_called_once()
 
     @patch("subscription_manager.syspurposelib.SyspurposeStore")
-    def test_unsetting_syspurpose_role(self, mock_syspurpose):
+    @patch("subscription_manager.syspurposelib.SyspurposeSyncActionCommand")
+    def test_unsetting_syspurpose_role(self, mock_syspurpose_sync, mock_syspurpose):
         mock_syspurpose.read = Mock()
         mock_syspurpose.read.return_value = Mock()
         instance_syspurpose_store = mock_syspurpose.read.return_value
@@ -1681,13 +1700,18 @@ class TestRoleCommand(TestCliCommand):
         instance_syspurpose_store.unset = MagicMock(return_value=True)
         instance_syspurpose_store.write = MagicMock(return_value=None)
 
+        mock_syspurpose_sync.return_value = Mock()
+        instance_mock_syspurpose_sync = mock_syspurpose_sync.return_value
+        instance_mock_syspurpose_sync.perform = Mock(return_value=({}, {"role": ""}))
+
         self.cc.options = Mock()
-        self.cc.options.set_role = None
-        self.cc.options.unset_role = True
+        self.cc.options.set = None
+        self.cc.options.unset = True
+        self.cc.options.to_add = False
         with Capture() as cap:
             self.cc._do_command()
 
-        self.assertIn("System Purpose role has been unset", cap.out)
+        self.assertIn("role unset", cap.out)
         instance_syspurpose_store.unset.assert_called_once_with('role')
         instance_syspurpose_store.write.assert_called_once()
 

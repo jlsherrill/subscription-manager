@@ -346,7 +346,7 @@ class SyspurposeSyncActionCommand(object):
         """
         if not self.uep.has_capability('syspurpose'):
             log.debug('Server does not support syspurpose, not syncing')
-            return
+            return {}
 
         consumer_identity = inj.require(inj.IDENTITY)
         consumer = self.uep.getConsumer(consumer_identity.uuid)
