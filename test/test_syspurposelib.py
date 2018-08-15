@@ -218,7 +218,7 @@ class SyspurposeSyncActionCommandTests(SubManFixture):
         with mock.patch.object(self.stub_cp_provider.consumer_auth_cp, 'updateConsumer') as update:
             result = self.command.sync()
 
-            mock_cache.read_cache_only.assert_called_once()
+            mock_cache.read_cache_only.assert_not_called()
             mock_cache.write_cache.assert_not_called()
 
             mock_merge.assert_not_called()

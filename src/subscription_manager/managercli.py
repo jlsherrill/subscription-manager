@@ -592,7 +592,7 @@ class SyspurposeCommand(CliCommand):
     def add(self):
         self._add(self.options.to_add)
         success_msg = "{attr} updated.".format(attr=self.name)
-        to_add = "--add "+ "--add ".join(self.options.to_add)
+        to_add = "--add " + "--add ".join(self.options.to_add)
         command = "subscription-manager {name} ".format(name=self.name) + to_add
         self._check_result(
             expectation=lambda res: all(x in res.get('addons', []) for x in self.options.to_add),
@@ -602,12 +602,12 @@ class SyspurposeCommand(CliCommand):
         )
 
     def _add(self, to_add):
-        raise NotImplemented("To be implemented in subclasses")
+        raise NotImplementedError("To be implemented in subclasses")
 
     def remove(self):
         self._remove(self.options.to_remove)
         success_msg = "{attr} updated.".format(attr=self.name.capitalize())
-        to_remove = "--remove "+ "--remove ".join(self.options.to_remove)
+        to_remove = "--remove " + "--remove ".join(self.options.to_remove)
         command = "subscription-manager {name} ".format(name=self.name) + to_remove
         self._check_result(
             expectation=lambda res: all(x not in res.get('addons', []) for x in self.options.to_remove),
