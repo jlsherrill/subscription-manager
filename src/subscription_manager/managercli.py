@@ -558,7 +558,8 @@ class SyspurposeCommand(CliCommand):
             self.parser.add_option(
                 "--remove",
                 dest="to_remove",
-                action="append", default=[],
+                action="append",
+                default=[],
                 help=_("Remove an item from the list ({attr}).".format(attr=attr))
             )
 
@@ -633,10 +634,12 @@ class SyspurposeCommand(CliCommand):
 
         if self.options.unset:
             self.unset()
-        elif self.options.set is not None:
+        elif self.options.set:
             self.set()
-        elif self.options.to_add:
+        elif hasattr(self.options, 'to_add') and len(self.options.to_add) > 0:
             self.add()
+        elif hasattr(self.options, 'to_remove') and len(self.options.to_remove) > 0:
+            self.remove()
         else:
             self.show()
 
@@ -1131,11 +1134,8 @@ class UsageCommand(SyspurposeCommand):
 
     def _validate_options(self):
         self.check_syspurpose_support('usage')
-        if self.options.usage:
-            self.options.usage = self.options.usage.strip()
-
-        if self.options.usage and self.options.unset:
-            system_exit(os.EX_USAGE, _("Error: --set cannot be used with --unset"))
+        if self.options.set and self.options.unset:
+            system_exit(os.EX_USAGE, _("Error: Options --set and --unset of usage subcommand are mutually exclusive."))
 
 
 class RegisterCommand(UserPassCommand):
