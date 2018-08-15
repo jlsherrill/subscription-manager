@@ -1454,18 +1454,9 @@ class TestServiceLevelCommand(TestCliProxyCommand):
     def test_org_requires_list_good(self):
         self.cc.main(["--org", "one", "--list"])
 
-    def test_service_level_not_supported(self):
-        self.cc.cp.setConsumer({})
-        try:
-            self.cc.set_service_level('JARJAR')
-        except SystemExit as e:
-            self.assertEqual(e.code, os.EX_UNAVAILABLE)
-        else:
-            self.fail("No Exception Raised")
-
     def test_service_level_supported(self):
         self.cc.cp.setConsumer({'serviceLevel': 'Jarjar'})
-        self.cc.set_service_level('JRJAR')
+        self.cc._set('JRJAR')
 
     def test_service_level_creates_syspurpose_dir_and_file(self):
         # create a mock /etc/rhsm/ directory, and set the value of a mock USER_SYSPURPOSE under that
@@ -1475,7 +1466,7 @@ class TestServiceLevelCommand(TestCliProxyCommand):
         syspurposelib.USER_SYSPURPOSE = mock_syspurpose_file
 
         self.cc.cp.setConsumer({'serviceLevel': 'Jarjar'})
-        self.cc.set_service_level('JRJAR')
+        self.cc._set('JRJAR')
         self.mock_sp_store.set.assert_has_calls([call("service_level_agreement", "JRJAR")])
         self.mock_sp_store.write.assert_called_once()
 

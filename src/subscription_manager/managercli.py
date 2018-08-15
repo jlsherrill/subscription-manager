@@ -169,9 +169,9 @@ CONSUMED_LIST = [
     _("System Type:")
 ]
 
-SP_CONFLICT_MESSAGE = "Due to a conflicting change made at the server the " \
-                      "{attr} has not been set.\n"
-SP_ADVICE = "If you'd like to overwrite the server side change please run: {command}"
+SP_CONFLICT_MESSAGE = _("Due to a conflicting change made at the server the "
+                        "{attr} has not been set.")
+SP_ADVICE = _("If you'd like to overwrite the server side change please run: {command}")
 
 
 def handle_exception(msg, ex):
@@ -580,7 +580,7 @@ class SyspurposeCommand(CliCommand):
         self._unset()
         success_msg = "{attr} unset.".format(attr=self.attr)
         self._check_result(
-            expectation=lambda res: res.get(self.attr) == "",
+            expectation=lambda res: res.get(self.attr) in ["", None],
             success_msg=success_msg,
             command="subscription-manager {name} --unset".format(name=self.name),
             attr=self.attr
@@ -655,8 +655,13 @@ class SyspurposeCommand(CliCommand):
         if expectation(result):
             print(_(success_msg))
         else:
-            advice = SP_ADVICE.format(command=command)
-            system_exit(os.EX_USAGE, msgs=_(SP_CONFLICT_MESSAGE.format(attr=attr, advice=advice)))
+            system_exit(
+                os.EX_USAGE,
+                msgs=(
+                    SP_CONFLICT_MESSAGE.format(attr=attr),
+                    SP_ADVICE.format(command=command)
+                )
+            )
 
 
 class UserPassCommand(CliCommand):
@@ -987,30 +992,30 @@ class ServiceLevelCommand(SyspurposeCommand, OrgCommand):
 
     def __init__(self):
 
-        shortdesc = _("Manage service levels for this system")
         self._org_help_text = _("specify an organization when listing available service levels using the organization key, only used with --list")
-        super(ServiceLevelCommand, self).__init__("service-level", shortdesc,
-                                                  False)
+        super(ServiceLevelCommand, self).__init__(
+            name="service-level",
+            shortdesc=_("Manage service levels for this system"),
+            attr='service_level_agreement',
+            commands=('set', 'unset'),
+            primary=False
+        )
 
         self._add_url_options()
-        self.parser.add_option("--show", dest="show", action='store_true',
-                help=_("show this system's current service level"))
-        self.parser.add_option("--list", dest="list", action='store_true',
-                help=_("list all service levels available"))
-        # self.parser.add_option("--set", dest="service_level",
-        #                        help=_("service level to apply to this system"))
-        # self.parser.add_option("--unset", dest="unset",
-        #                        action='store_true',
-        #                        help=_("unset the service level for this system"))
+        self.parser.add_option(
+            "--show",
+            dest="show",
+            action='store_true',
+            help=_("show this system's current service level")
+        )
+        self.parser.add_option(
+            "--list",
+            dest="list",
+            action='store_true',
+            help=_("list all service levels available")
+        )
 
         self.identity = inj.require(inj.IDENTITY)
-
-    def _set_service_level(self, service_level):
-        consumer = self.cp.getConsumer(self.identity.uuid)
-        if 'serviceLevel' not in consumer:
-            system_exit(os.EX_UNAVAILABLE, _("Error: The service-level command is not supported by the server."))
-        self.cp.updateConsumer(self.identity.uuid, service_level=service_level)
-        save_sla_to_syspurpose_metadata(service_level)
 
     def _validate_options(self):
 
@@ -1047,38 +1052,26 @@ class ServiceLevelCommand(SyspurposeCommand, OrgCommand):
             else:
                 # get an UEP as consumer
                 self.cp = self.cp_provider.get_consumer_auth_cp()
-
-            if self.options.unset:
-                self.unset_service_level()
-                self.unset()
-
-            if self.options.service_level is not None:
-                self.set_service_level(self.options.service_level)
-                self.set()
-
-            if self.options.show:
-                self.show_service_level()
-
-            if self.options.list:
-                self.list_service_levels()
-
         except connection.RestlibException as re:
             log.exception(re)
             log.error(u"Error: Unable to retrieve service levels: %s" % re)
             system_exit(os.EX_SOFTWARE, re.msg)
         except Exception as e:
             handle_exception(_("Error: Unable to retrieve service levels."), e)
-
-    def set_service_level(self, service_level):
-        if service_level == "":
-            self.unset_service_level()
         else:
-            self._set_service_level(service_level)
-            print(_("Service level set to: %s") % service_level)
+            if self.options.unset:
+                self.unset()
+            elif self.options.set is not None:
+                self.set()
+            elif self.options.list:
+                self.list_service_levels()
+            elif self.options.show:
+                self.show_service_level()
+            else:
+                self.show_service_level()
 
-    def unset_service_level(self):
-        self._set_service_level("")
-        print(_("Service level preference has been unset"))
+    def _set(self, service_level):
+        save_sla_to_syspurpose_metadata(service_level)
 
     def show_service_level(self):
         consumer = self.cp.getConsumer(self.identity.uuid)
@@ -1128,9 +1121,6 @@ class UsageCommand(SyspurposeCommand):
 
     def _set(self, usage):
         save_usage_to_syspurpose_metadata(usage)
-
-    def _unset(self):
-        self._set("")
 
     def _validate_options(self):
         self.check_syspurpose_support('usage')

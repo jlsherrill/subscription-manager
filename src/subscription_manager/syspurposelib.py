@@ -299,7 +299,7 @@ class SyspurposeSyncActionReport(certlib.ActionReport):
                     key=change.key, value=change.new_value, source=source
             )
         elif change.in_base and change.previous_value != change.new_value:
-            msg = "'{key}' updated from '{old_value}' to '{old_value}' due to change in {source}"\
+            msg = "'{key}' updated from '{old_value}' to '{new_value}' due to change in {source}"\
                 .format(key=change.key, new_value=change.new_value,
                         old_value=change.previous_value, source=source)
 
@@ -344,9 +344,9 @@ class SyspurposeSyncActionCommand(object):
         Saves the merged changes between client and server in the SyspurposeCache.
         :return: The synced values
         """
-        if not self.uep.has_capability('syspurpose'):
-            log.debug('Server does not support syspurpose, not syncing')
-            return {}
+        # if not self.uep.has_capability('syspurpose'):
+        #     log.debug('Server does not support syspurpose, not syncing')
+        #     return {}
 
         consumer_identity = inj.require(inj.IDENTITY)
         consumer = self.uep.getConsumer(consumer_identity.uuid)
@@ -376,10 +376,13 @@ class SyspurposeSyncActionCommand(object):
 
         write_syspurpose(result)
 
-        self.uep.updateConsumer(consumer_identity.uuid, role=result[ROLE],
-                                addons=result[ADDONS],
-                                service_level=result[SERVICE_LEVEL],
-                                usage=result[USAGE])
+        self.uep.updateConsumer(
+            consumer_identity.uuid,
+            role=result.get(ROLE) or "",
+            addons=result.get(ADDONS) or "",
+            service_level=result.get(SERVICE_LEVEL) or "",
+            usage=result.get(USAGE) or ""
+        )
 
         self.report._status = 'Successfully synced system purpose'
 
