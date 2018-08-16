@@ -537,14 +537,14 @@ class SyspurposeCommand(CliCommand):
             self.parser.add_option(
                 "--set",
                 dest="set",
-                help=(_("Set {attr} of system purpose".format(attr=attr)))
+                help=_("Set {attr} of system purpose").format(attr=attr)
             )
         if 'unset' in commands:
             self.parser.add_option(
                 "--unset",
                 dest="unset",
                 action="store_true",
-                help=(_("Unset {attr} of system purpose".format(attr=attr)))
+                help=_("Unset {attr} of system purpose").format(attr=attr)
             )
         if 'add' in commands:
             self.parser.add_option(
@@ -552,7 +552,7 @@ class SyspurposeCommand(CliCommand):
                 dest="to_add",
                 action="append",
                 default=[],
-                help=_("Add an item to the list ({attr}).".format(attr=attr))
+                help=_("Add an item to the list ({attr}).").format(attr=attr)
             )
         if 'remove' in commands:
             self.parser.add_option(
@@ -560,12 +560,12 @@ class SyspurposeCommand(CliCommand):
                 dest="to_remove",
                 action="append",
                 default=[],
-                help=_("Remove an item from the list ({attr}).".format(attr=attr))
+                help=_("Remove an item from the list ({attr}).").format(attr=attr)
             )
 
     def set(self):
         self._set(self.options.set)
-        success_msg = "{attr} set to \"{val}\".".format(attr=self.attr, val=self.options.set)
+        success_msg = _("{attr} set to \"{val}\".").format(attr=self.attr, val=self.options.set)
         self._check_result(
             expectation=lambda res: res.get(self.attr) == self.options.set,
             success_msg=success_msg,
@@ -578,7 +578,7 @@ class SyspurposeCommand(CliCommand):
 
     def unset(self):
         self._unset()
-        success_msg = "{attr} unset.".format(attr=self.attr)
+        success_msg = _("{attr} unset.").format(attr=self.attr)
         self._check_result(
             expectation=lambda res: res.get(self.attr) in ["", None],
             success_msg=success_msg,
@@ -591,7 +591,7 @@ class SyspurposeCommand(CliCommand):
 
     def add(self):
         self._add(self.options.to_add)
-        success_msg = "{attr} updated.".format(attr=self.name)
+        success_msg = _("{attr} updated.").format(attr=self.name)
         to_add = "--add " + "--add ".join(self.options.to_add)
         command = "subscription-manager {name} ".format(name=self.name) + to_add
         self._check_result(
@@ -606,7 +606,7 @@ class SyspurposeCommand(CliCommand):
 
     def remove(self):
         self._remove(self.options.to_remove)
-        success_msg = "{attr} updated.".format(attr=self.name.capitalize())
+        success_msg = _("{attr} updated.").format(attr=self.name.capitalize())
         to_remove = "--remove " + "--remove ".join(self.options.to_remove)
         command = "subscription-manager {name} ".format(name=self.name) + to_remove
         self._check_result(

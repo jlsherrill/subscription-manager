@@ -344,9 +344,9 @@ class SyspurposeSyncActionCommand(object):
         Saves the merged changes between client and server in the SyspurposeCache.
         :return: The synced values
         """
-        # if not self.uep.has_capability('syspurpose'):
-        #     log.debug('Server does not support syspurpose, not syncing')
-        #     return {}
+        if not self.uep.has_capability('syspurpose'):
+            log.debug('Server does not support syspurpose, not syncing')
+            return {}
 
         consumer_identity = inj.require(inj.IDENTITY)
         consumer = self.uep.getConsumer(consumer_identity.uuid)
